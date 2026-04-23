@@ -1,0 +1,16 @@
+# @everylotSJ cron setup
+#
+# 1. Edit your crontab:    crontab -e
+# 2. Paste the line below (update the path to where you cloned this repo)
+# 3. Save and quit. Verify with: crontab -l
+#
+# The bot runs every hour at :30 past the hour. Output goes to logs/bot.log.
+# Make sure the logs/ directory exists:  mkdir -p /path/to/everylotSJ/logs
+
+30 * * * * cd /path/to/everylotSJ && /usr/bin/env python3 bot.py >> logs/bot.log 2>&1
+
+# If you use a virtualenv, point at the venv's Python instead, e.g.:
+# 30 * * * * cd /path/to/everylotSJ && /path/to/everylotSJ/.venv/bin/python bot.py >> logs/bot.log 2>&1
+
+# Tip: to run every hour on the hour, use `0 * * * *` instead of `30 * * * *`.
+# Tip: to test immediately without waiting, run `python bot.py` manually.

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m pip install -r requirements.txt)",
+      "Bash(python3 setup_db.py --limit 10 --skip-enrich)",
+      "WebFetch(domain:gisdata-csj.opendata.arcgis.com)",
+      "WebFetch(domain:gis.sanjoseca.gov)",
+      "WebFetch(domain:asr.santaclaracounty.gov)",
+      "WebSearch",
+      "WebFetch(domain:data.sanjoseca.gov)",
+      "WebFetch(domain:gis.santaclaracounty.gov)",
+      "WebFetch(domain:prod-sccgov.opendata.arcgis.com)",
+      "Bash(python3 setup_db.py --limit 100)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 setup_db.py --limit 500)",
+      "Bash(python3 bot.py --dry-run)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
