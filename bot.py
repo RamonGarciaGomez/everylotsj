@@ -1,8 +1,8 @@
-"""@everylotSJ Twitter bot — posts one San Jose address per hour.
+"""@everylotSJ Mastodon bot — posts one San Jose address per hour.
 
 Usage:
-    python bot.py                  # pick the next unposted address and tweet it
-    python bot.py --dry-run        # print the tweet without posting
+    python bot.py                  # pick the next unposted address and post it
+    python bot.py --dry-run        # print the post without publishing
     python bot.py --id 12345       # force a specific row ID
 """
 
@@ -36,10 +36,10 @@ PLACE_TYPES = {
 def load_credentials() -> dict:
     load_dotenv()
     return {
-        "TWITTER_API_KEY": os.getenv("TWITTER_API_KEY"),
-        "TWITTER_API_SECRET": os.getenv("TWITTER_API_SECRET"),
-        "TWITTER_ACCESS_TOKEN": os.getenv("TWITTER_ACCESS_TOKEN"),
-        "TWITTER_ACCESS_TOKEN_SECRET": os.getenv("TWITTER_ACCESS_TOKEN_SECRET"),
+        "MASTODON_CLIENT_KEY": os.getenv("MASTODON_CLIENT_KEY"),
+        "MASTODON_CLIENT_SECRET": os.getenv("MASTODON_CLIENT_SECRET"),
+        "MASTODON_ACCESS_TOKEN": os.getenv("MASTODON_ACCESS_TOKEN"),
+        "MASTODON_INSTANCE_URL": os.getenv("MASTODON_INSTANCE_URL", "https://mastodon.social"),
         "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY"),
     }
 
@@ -54,7 +54,7 @@ def get_lot(conn: sqlite3.Connection, row_id: Optional[int] = None) -> Optional[
     return cur.fetchone()
 
 
-def format_tweet(lot: sqlite3.Row) -> str:
+def format_post(lot: sqlite3.Row) -> str:
     lines = []
     lines.append(f"📍 {lot['address']}")
 
@@ -90,7 +90,7 @@ def fetch_street_view(lat: float, lon: float, api_key: str) -> Optional[str]:
             timeout=30,
         )
         if r.status_code != 200 or len(r.content) < 5000:
-            print(f"  Street View fetch failed or returned tiny image (status {r.status_code}).")
+            print(f"  Street View fetch failed (status {r.status_code}).")
             return None
         tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
         tmp.write(r.content)
@@ -101,44 +101,38 @@ def fetch_street_view(lat: float, lon: float, api_key: str) -> Optional[str]:
         return None
 
 
-def post_tweet(text: str, image_path: Optional[str], creds: dict) -> Optional[str]:
-    import tweepy
+def post_to_mastodon(text: str, image_path: Optional[str], creds: dict) -> Optional[str]:
+    from mastodon import Mastodon
 
-    auth = tweepy.OAuth1UserHandler(
-        creds["TWITTER_API_KEY"], creds["TWITTER_API_SECRET"],
-        creds["TWITTER_ACCESS_TOKEN"], creds["TWITTER_ACCESS_TOKEN_SECRET"],
-    )
-    api_v1 = tweepy.API(auth)
-    client = tweepy.Client(
-        consumer_key=creds["TWITTER_API_KEY"],
-        consumer_secret=creds["TWITTER_API_SECRET"],
-        access_token=creds["TWITTER_ACCESS_TOKEN"],
-        access_token_secret=creds["TWITTER_ACCESS_TOKEN_SECRET"],
+    mastodon = Mastodon(
+        client_id=creds["MASTODON_CLIENT_KEY"],
+        client_secret=creds["MASTODON_CLIENT_SECRET"],
+        access_token=creds["MASTODON_ACCESS_TOKEN"],
+        api_base_url=creds["MASTODON_INSTANCE_URL"],
     )
 
     media_ids = None
     if image_path:
         print("  Uploading image...")
-        media = api_v1.media_upload(filename=image_path)
-        media_ids = [media.media_id]
+        media = mastodon.media_post(image_path, mime_type="image/jpeg")
+        media_ids = [media["id"]]
 
-    print("  Posting tweet...")
-    resp = client.create_tweet(text=text, media_ids=media_ids)
-    tweet_id = resp.data.get("id") if resp and resp.data else None
-    return str(tweet_id) if tweet_id else None
+    print("  Posting to Mastodon...")
+    status = mastodon.status_post(text, media_ids=media_ids, visibility="public")
+    return str(status["id"]) if status else None
 
 
-def mark_posted(conn: sqlite3.Connection, lot_id: int, tweet_id: Optional[str]) -> None:
+def mark_posted(conn: sqlite3.Connection, lot_id: int, post_id: Optional[str]) -> None:
     conn.execute(
         "UPDATE lots SET posted = 1, tweet_id = ?, posted_at = ? WHERE id = ?",
-        (tweet_id, datetime.now(timezone.utc).isoformat(), lot_id),
+        (post_id, datetime.now(timezone.utc).isoformat(), lot_id),
     )
     conn.commit()
 
 
 def main():
     ap = argparse.ArgumentParser(description="@everylotSJ bot")
-    ap.add_argument("--dry-run", action="store_true", help="Print tweet without posting")
+    ap.add_argument("--dry-run", action="store_true", help="Print post without publishing")
     ap.add_argument("--id", dest="row_id", type=int, default=None, help="Force a specific row ID")
     args = ap.parse_args()
 
@@ -158,11 +152,10 @@ def main():
 
         print(f"Selected ID {lot['id']} — {lot['address']}")
 
-        tweet_text = format_tweet(lot)
-        print("---- tweet preview ----")
-        print(tweet_text)
-        print("-----------------------")
-        print(f"  ({len(tweet_text)} chars)")
+        post_text = format_post(lot)
+        print("---- post preview ----")
+        print(post_text)
+        print("----------------------")
 
         image_path = None
         if lot["lat"] and lot["lon"] and creds.get("GOOGLE_API_KEY"):
@@ -179,13 +172,13 @@ def main():
                 if image_path:
                     print(f"[DRY RUN] Would attach image: {image_path}")
             else:
-                missing = [k for k, v in creds.items() if k.startswith("TWITTER_") and not v]
+                missing = [k for k, v in creds.items() if k.startswith("MASTODON_") and not v]
                 if missing:
-                    print(f"ERROR: Missing Twitter credentials: {missing}")
+                    print(f"ERROR: Missing Mastodon credentials: {missing}")
                     sys.exit(1)
-                tweet_id = post_tweet(tweet_text, image_path, creds)
-                mark_posted(conn, lot["id"], tweet_id)
-                print(f"Posted! Tweet ID: {tweet_id}")
+                post_id = post_to_mastodon(post_text, image_path, creds)
+                mark_posted(conn, lot["id"], post_id)
+                print(f"Posted! Status ID: {post_id}")
         finally:
             if image_path and os.path.exists(image_path):
                 os.unlink(image_path)

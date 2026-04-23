@@ -1,6 +1,6 @@
 # @everylotSJ
 
-A Twitter/X bot that posts one San Jose address per hour with a Google Street View photo.
+A Mastodon bot that posts one San Jose address per hour with a Google Street View photo.
 
 Inspired by [@everylotNYC](https://twitter.com/everylotnyc) and based on the [everylot](https://github.com/fitnr/everylot) project by [@fitnr](https://github.com/fitnr).
 
@@ -37,17 +37,16 @@ Property type labels:
 
 ## Step 1 — Get your API keys
 
-### Twitter / X (four keys)
+### Mastodon (three keys + instance URL)
 
-1. Go to <https://developer.twitter.com> and sign in.
-2. Apply for a developer account if you don't have one (the Free tier is enough — it allows ~500 tweets/month, more than enough for hourly posting).
-3. Create a new **Project** and inside it create an **App**.
-4. In the App settings, set permissions to **"Read and Write"**. If you change this after generating tokens, regenerate them.
-5. Copy these four values:
-   - API Key → `TWITTER_API_KEY`
-   - API Secret → `TWITTER_API_SECRET`
-   - Access Token → `TWITTER_ACCESS_TOKEN`
-   - Access Token Secret → `TWITTER_ACCESS_TOKEN_SECRET`
+1. Sign up on any Mastodon instance — [mastodon.social](https://mastodon.social) is the largest, or find one at [instances.social](https://instances.social).
+2. Go to **Preferences → Development → New Application**.
+3. Give it a name (e.g. "everylotSJ") and make sure `write:statuses` and `write:media` are checked under scopes.
+4. Click **Submit**, open the app, and copy:
+   - Client key → `MASTODON_CLIENT_KEY`
+   - Client secret → `MASTODON_CLIENT_SECRET`
+   - Access token → `MASTODON_ACCESS_TOKEN`
+5. Set `MASTODON_INSTANCE_URL` to your instance (e.g. `https://mastodon.social`).
 
 ### Google Cloud (one key)
 
