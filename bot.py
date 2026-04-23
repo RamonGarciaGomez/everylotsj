@@ -60,7 +60,7 @@ def format_tweet(lot: sqlite3.Row) -> str:
 
     label = PLACE_TYPE_LABELS.get(lot["place_type"] or "", "")
     if label:
-        lines.append(f"🏠 {label}")
+        lines.append(f"🏠 Property type: {label}")
 
     lines.append("#SanJose #everylotSJ")
     return "\n".join(lines)
