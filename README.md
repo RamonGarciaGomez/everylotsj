@@ -1,6 +1,8 @@
 # @everylotSJ
 
-A Mastodon bot that posts one San Jose address per hour with a Google Street View photo.
+A Mastodon bot that posts one San Jose address every 30 minutes with a Google Street View photo. 394,000 addresses. ~16 months of content.
+
+**Follow the bot: [mastodon.social/@everylotsj](https://mastodon.social/@everylotsj)**
 
 Inspired by [@everylotNYC](https://twitter.com/everylotnyc) and based on the [everylot](https://github.com/fitnr/everylot) project by [@fitnr](https://github.com/fitnr).
 
