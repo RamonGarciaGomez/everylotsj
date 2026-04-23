@@ -23,13 +23,13 @@ DB_PATH = "lots.db"
 STREET_VIEW_URL = "https://maps.googleapis.com/maps/api/streetview"
 STREET_VIEW_METADATA_URL = "https://maps.googleapis.com/maps/api/streetview/metadata"
 
-PLACE_TYPE_LABELS = {
-    "SF": "Single Family",
-    "MF": "Multi-Family",
-    "BU": "Commercial / Business",
-    "MH": "Mobile Home",
-    "CO": "Condo",
-    "TR": "Transit / Transportation",
+PLACE_TYPES = {
+    "SF": ("🏡", "Single Family"),
+    "MF": ("🏘️", "Multi-Family"),
+    "BU": ("🏬", "Commercial / Business"),
+    "MH": ("🚐", "Mobile Home"),
+    "CO": ("🏢", "Condo"),
+    "TR": ("🚉", "Transit / Transportation"),
 }
 
 
@@ -58,9 +58,10 @@ def format_tweet(lot: sqlite3.Row) -> str:
     lines = []
     lines.append(f"📍 {lot['address']}")
 
-    label = PLACE_TYPE_LABELS.get(lot["place_type"] or "", "")
-    if label:
-        lines.append(f"🏠 Property type: {label}")
+    place = PLACE_TYPES.get(lot["place_type"] or "")
+    if place:
+        emoji, label = place
+        lines.append(f"{emoji} Property type: {label}")
 
     lines.append("#SanJose #everylotSJ")
     return "\n".join(lines)
