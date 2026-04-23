@@ -1,23 +1,37 @@
 # @everylotSJ
 
-A Twitter/X bot that posts one San Jose property per hour with a Google
-Street View photo and fun assessor facts (zoning, lot size, assessed value).
+A Twitter/X bot that posts one San Jose address per hour with a Google Street View photo.
 
 Inspired by [@everylotNYC](https://twitter.com/everylotnyc) and based on the [everylot](https://github.com/fitnr/everylot) project by [@fitnr](https://github.com/fitnr).
 
 Each tweet looks like:
 
 ```
-📍 1234 Elm St, San Jose CA
-🏠 Zoning: R1 (Single-Family Residential)
-📐 Lot size: 6,200 sq ft
-💰 Assessed value: $820,000
-   └ Land: $410,000
-   └ Building: $410,000
+📍 1 Almaden Blvd 1150 San Jose CA 95113
+🏠 Commercial / Business
 #SanJose #everylotSJ
 ```
 
-...with a Street View image attached.
+...with a Google Street View image attached.
+
+Property type labels:
+
+| Code | Label |
+|------|-------|
+| SF | Single Family |
+| MF | Multi-Family |
+| BU | Commercial / Business |
+| MH | Mobile Home |
+| CO | Condo |
+| TR | Transit / Transportation |
+
+---
+
+## How it works
+
+1. `setup_db.py` downloads ~395,000 active San Jose address points from the city's ArcGIS MapServer into a local SQLite database (`lots.db`). Each record has a street address, latitude/longitude, and property type.
+2. `bot.py` picks the next unposted address, fetches a Street View image from Google, formats the tweet, posts it, and marks that address as done so it's never posted again.
+3. A cron job runs `bot.py` once an hour automatically.
 
 ---
 
@@ -26,44 +40,39 @@ Each tweet looks like:
 ### Twitter / X (four keys)
 
 1. Go to <https://developer.twitter.com> and sign in.
-2. Apply for a developer account if you don't have one (Free tier is enough
-   to post ~500 tweets/month, which is plenty for hourly posting).
+2. Apply for a developer account if you don't have one (the Free tier is enough — it allows ~500 tweets/month, more than enough for hourly posting).
 3. Create a new **Project** and inside it create an **App**.
-4. In the App settings, enable **"Read and Write"** permissions
-   (required to post tweets). If you change this after generating tokens,
-   you'll need to regenerate them.
-5. Generate and copy these four values:
-   - API Key (`TWITTER_API_KEY`)
-   - API Secret (`TWITTER_API_SECRET`)
-   - Access Token (`TWITTER_ACCESS_TOKEN`)
-   - Access Token Secret (`TWITTER_ACCESS_TOKEN_SECRET`)
+4. In the App settings, set permissions to **"Read and Write"**. If you change this after generating tokens, regenerate them.
+5. Copy these four values:
+   - API Key → `TWITTER_API_KEY`
+   - API Secret → `TWITTER_API_SECRET`
+   - Access Token → `TWITTER_ACCESS_TOKEN`
+   - Access Token Secret → `TWITTER_ACCESS_TOKEN_SECRET`
 
 ### Google Cloud (one key)
 
 1. Go to <https://console.cloud.google.com>.
-2. Create a new project (or reuse one).
-3. Under **APIs & Services → Library**, enable:
-   - **Street View Static API**
-   - **Geocoding API** (optional, for address → lat/lon fallbacks)
+2. Create a project (or reuse an existing one).
+3. Under **APIs & Services → Library**, enable the **Street View Static API**.
 4. Under **APIs & Services → Credentials**, create an **API key**.
-5. Copy the key into `GOOGLE_API_KEY`.
+5. Copy it into `GOOGLE_API_KEY`.
 
-Cost note: Street View Static is ~$7 per 1,000 images, and Google gives
-every account a $200/month free credit. At one tweet per hour (~720
-images/month), you stay well inside the free tier.
+**Cost note:** Street View Static is ~$7 per 1,000 images. Google gives every account $200/month in free credit. At one tweet per hour (~720 images/month) you stay comfortably within the free tier.
 
 ---
 
 ## Step 2 — Clone and install
 
 ```bash
-git clone <this repo>
-cd everylotSJ
+git clone https://github.com/RamonGarciaGomez/everylotsj.git
+cd everylotsj
 pip install -r requirements.txt
 ```
 
-(If you prefer, create a virtualenv first:
-`python3 -m venv .venv && source .venv/bin/activate`.)
+Tip: use a virtualenv to keep dependencies isolated:
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+```
 
 ---
 
@@ -73,77 +82,64 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Open `.env` in your editor and paste in the keys from Step 1.
-Never commit `.env` — it's in `.gitignore`.
+Open `.env` and fill in your API keys. Never commit this file — it's already in `.gitignore`.
 
 ---
 
 ## Step 4 — Build the database
 
-The database (`lots.db`) combines two data sources:
+This downloads all San Jose address points from the city's open GIS API and loads them into `lots.db`.
 
-1. San Jose open-data parcels CSV (addresses, zoning, geometry)
-2. Santa Clara County Assessor web lookup (assessed values)
-
-Start with a small test run:
+Test with a small batch first:
 
 ```bash
-python setup_db.py --limit 1000
+python setup_db.py --limit 2000
 ```
 
-That downloads the CSV (~50-100 MB) and enriches the first 1,000 parcels.
-The enrichment step is slow (2-second rate limit per lookup), so 1,000
-lots takes ~35 minutes.
-
-When you're satisfied, do the full run:
+Then run the full load (~395k addresses, takes about 15 minutes):
 
 ```bash
 python setup_db.py
 ```
 
-The full dataset is ~200,000 parcels; enrichment will take several hours
-(or days if you let it run in the background). You can also skip
-enrichment up front and let the bot do it lazily per tweet:
+To start over from scratch:
 
 ```bash
-python setup_db.py --skip-enrich
+python setup_db.py --reset
 ```
 
 ---
 
-## Step 5 — Dry-run test
+## Step 5 — Test with a dry run
 
-Preview the next tweet without posting:
+Preview the next tweet without actually posting it:
 
 ```bash
 python bot.py --dry-run
 ```
 
-This prints the formatted tweet and confirms the Street View image would
-fetch. No data is written, no tweet is sent.
-
-You can also target a specific parcel by APN:
+Test a specific address by its database ID:
 
 ```bash
-python bot.py --dry-run --id 123-45-678
+python bot.py --dry-run --id 12345
 ```
 
 ---
 
-## Step 6 — Post your first tweet for real
+## Step 6 — Post your first tweet
 
 ```bash
 python bot.py
 ```
 
 The bot will:
-- pick the next unposted lot from `lots.db`
-- fetch (and cache) assessor data if missing
-- fetch a Street View image
-- post the tweet
-- mark the lot as posted and record the tweet ID
+- Pick the next unposted address from `lots.db`
+- Check if Street View imagery exists for that location
+- Fetch the Street View image (if available)
+- Post the tweet (with image if available, text-only if not)
+- Mark the address as posted and save the tweet ID
 
-Check your account — you should see the tweet.
+Check your Twitter account — the tweet should appear within seconds.
 
 ---
 
@@ -154,35 +150,30 @@ mkdir -p logs
 crontab -e
 ```
 
-Paste one of the lines from `crontab_example.txt` (adjust the path to
-where you cloned this repo). Confirm with `crontab -l`.
+Paste the line from `crontab_example.txt`, updating the path to where you cloned the repo. Verify with `crontab -l`.
 
 ---
 
 ## Files
 
-| File                   | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `setup_db.py`          | Download parcels CSV → build & enrich `lots.db`      |
-| `enrichment.py`        | Santa Clara County assessor value lookup             |
-| `bot.py`               | Post one lot per run                                 |
-| `requirements.txt`     | Python dependencies                                  |
-| `.env.example`         | Template for credentials                             |
-| `crontab_example.txt`  | How to schedule hourly runs                          |
+| File | Purpose |
+|------|---------|
+| `setup_db.py` | Downloads San Jose address points and builds `lots.db` |
+| `bot.py` | Picks the next address, fetches Street View, posts the tweet |
+| `requirements.txt` | Python dependencies |
+| `.env.example` | Credential template — copy to `.env` and fill in |
+| `crontab_example.txt` | How to schedule hourly runs |
+
+---
 
 ## Troubleshooting
 
-- **"No unposted lots remaining"** — you've tweeted every lot. Congrats!
-  Reset with `sqlite3 lots.db 'UPDATE lots SET posted = 0'`.
-- **"Missing Twitter credentials"** — check that `.env` exists and has
-  all four `TWITTER_*` values filled in.
-- **Street View returns a gray placeholder** — the bot detects this via
-  the metadata endpoint and posts the tweet without an image instead of
-  crashing.
-- **Assessor enrichment returns all `None`** — the county may have
-  updated their site structure. Update `enrichment.py`'s parser to match.
+- **"No unposted lots remaining"** — the bot has tweeted every address. Reset the queue with `sqlite3 lots.db 'UPDATE lots SET posted = 0'`.
+- **"Missing Twitter credentials"** — make sure `.env` exists and all four `TWITTER_*` values are filled in.
+- **No Street View image** — the bot checks the Street View metadata endpoint before fetching. If no imagery exists for a location, it posts text-only instead of crashing.
+
+---
 
 ## License
 
-MIT. Assessor data and parcel data are public records from the County of
-Santa Clara and the City of San Jose.
+MIT. Address data is public record from the City of San Jose.
