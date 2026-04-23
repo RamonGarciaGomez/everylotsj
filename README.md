@@ -3,7 +3,7 @@
 A Twitter/X bot that posts one San Jose property per hour with a Google
 Street View photo and fun assessor facts (zoning, lot size, assessed value).
 
-Inspired by [@everylotNYC](https://twitter.com/everylotnyc).
+Inspired by [@everylotNYC](https://twitter.com/everylotnyc) and based on the [everylot](https://github.com/fitnr/everylot) project by [@fitnr](https://github.com/fitnr).
 
 Each tweet looks like:
 
