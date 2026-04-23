@@ -18,10 +18,12 @@ from typing import Optional
 
 import requests
 from dotenv import load_dotenv
+from mastodon import Mastodon
 
 DB_PATH = "lots.db"
 STREET_VIEW_URL = "https://maps.googleapis.com/maps/api/streetview"
 STREET_VIEW_METADATA_URL = "https://maps.googleapis.com/maps/api/streetview/metadata"
+USER_AGENT = "everylotSJ-bot/1.0 (https://github.com/RamonGarciaGomez/everylotsj)"
 
 PLACE_TYPES = {
     "SF": ("🏡", "Single Family"),
@@ -45,12 +47,12 @@ def load_credentials() -> dict:
 
 
 def get_lot(conn: sqlite3.Connection, row_id: Optional[int] = None) -> Optional[sqlite3.Row]:
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+    cur.row_factory = sqlite3.Row
     if row_id is not None:
         cur.execute("SELECT * FROM lots WHERE id = ?", (row_id,))
     else:
-        cur.execute("SELECT * FROM lots WHERE posted = 0 ORDER BY id LIMIT 1")
+        cur.execute("SELECT * FROM lots WHERE posted = 0 ORDER BY RANDOM() LIMIT 1")
     return cur.fetchone()
 
 
@@ -72,6 +74,7 @@ def street_view_has_image(lat: float, lon: float, api_key: str) -> bool:
         r = requests.get(
             STREET_VIEW_METADATA_URL,
             params={"location": f"{lat},{lon}", "key": api_key},
+            headers={"User-Agent": USER_AGENT},
             timeout=15,
         )
         return r.status_code == 200 and r.json().get("status") == "OK"
@@ -87,6 +90,7 @@ def fetch_street_view(lat: float, lon: float, api_key: str) -> Optional[str]:
         r = requests.get(
             STREET_VIEW_URL,
             params={"size": "1200x675", "location": f"{lat},{lon}", "key": api_key},
+            headers={"User-Agent": USER_AGENT},
             timeout=30,
         )
         if r.status_code != 200 or len(r.content) < 5000:
@@ -101,9 +105,7 @@ def fetch_street_view(lat: float, lon: float, api_key: str) -> Optional[str]:
         return None
 
 
-def post_to_mastodon(text: str, image_path: Optional[str], creds: dict) -> Optional[str]:
-    from mastodon import Mastodon
-
+def post_to_mastodon(text: str, image_path: Optional[str], address: str, creds: dict) -> Optional[str]:
     mastodon = Mastodon(
         client_id=creds["MASTODON_CLIENT_KEY"],
         client_secret=creds["MASTODON_CLIENT_SECRET"],
@@ -114,7 +116,8 @@ def post_to_mastodon(text: str, image_path: Optional[str], creds: dict) -> Optio
     media_ids = None
     if image_path:
         print("  Uploading image...")
-        media = mastodon.media_post(image_path, mime_type="image/jpeg")
+        alt_text = f"Google Street View image of {address}"
+        media = mastodon.media_post(image_path, mime_type="image/jpeg", description=alt_text)
         media_ids = [media["id"]]
 
     print("  Posting to Mastodon...")
@@ -124,7 +127,7 @@ def post_to_mastodon(text: str, image_path: Optional[str], creds: dict) -> Optio
 
 def mark_posted(conn: sqlite3.Connection, lot_id: int, post_id: Optional[str]) -> None:
     conn.execute(
-        "UPDATE lots SET posted = 1, tweet_id = ?, posted_at = ? WHERE id = ?",
+        "UPDATE lots SET posted = 1, post_id = ?, posted_at = ? WHERE id = ?",
         (post_id, datetime.now(timezone.utc).isoformat(), lot_id),
     )
     conn.commit()
@@ -144,8 +147,10 @@ def main():
 
     conn = sqlite3.connect(DB_PATH)
     try:
+        conn.execute("BEGIN IMMEDIATE")
         lot = get_lot(conn, row_id=args.row_id)
         if lot is None:
+            conn.rollback()
             msg = f"No lot found with ID {args.row_id}." if args.row_id else "No unposted lots remaining!"
             print(msg)
             sys.exit(0)
@@ -158,7 +163,7 @@ def main():
         print("----------------------")
 
         image_path = None
-        if lot["lat"] and lot["lon"] and creds.get("GOOGLE_API_KEY"):
+        if lot["lat"] is not None and lot["lon"] is not None and creds.get("GOOGLE_API_KEY"):
             print("  Fetching Street View image...")
             image_path = fetch_street_view(lot["lat"], lot["lon"], creds["GOOGLE_API_KEY"])
             if image_path:
@@ -168,17 +173,25 @@ def main():
 
         try:
             if args.dry_run:
+                conn.rollback()
                 print("[DRY RUN] Not posting.")
                 if image_path:
                     print(f"[DRY RUN] Would attach image: {image_path}")
             else:
                 missing = [k for k, v in creds.items() if k.startswith("MASTODON_") and not v]
                 if missing:
+                    conn.rollback()
                     print(f"ERROR: Missing Mastodon credentials: {missing}")
                     sys.exit(1)
-                post_id = post_to_mastodon(post_text, image_path, creds)
-                mark_posted(conn, lot["id"], post_id)
-                print(f"Posted! Status ID: {post_id}")
+                try:
+                    post_id = post_to_mastodon(post_text, image_path, lot["address"], creds)
+                    mark_posted(conn, lot["id"], post_id)
+                    print(f"Posted! Status ID: {post_id}")
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Posting failed: {e}")
+                    print("Address NOT marked as posted — will retry next run.")
+                    sys.exit(1)
         finally:
             if image_path and os.path.exists(image_path):
                 os.unlink(image_path)
