@@ -159,7 +159,7 @@ def format_post(lot: sqlite3.Row, posted_count: int = 0, place_name: Optional[st
     return "\n".join(lines)
 
 
-def format_bio(lot: sqlite3.Row) -> str:
+def format_bio(lot: sqlite3.Row, milestone: Optional[int] = None) -> str:
     # Prefer stored zip/neighborhood from DB row, fall back to extraction
     try:
         zipcode = lot["zip"] or extract_zip(lot["address"])
@@ -168,8 +168,10 @@ def format_bio(lot: sqlite3.Row) -> str:
         zipcode = extract_zip(lot["address"])
         neighborhood = ZIP_NEIGHBORHOODS.get(zipcode, "San Jose") if zipcode else "San Jose"
     location = f"{neighborhood} ({zipcode})" if zipcode else neighborhood
+    milestone_line = f"🎉 {milestone:,} addresses posted!\n" if milestone else ""
     return (
         f"posting every address in san josé one by one (all 394k)\n"
+        f"{milestone_line}"
         f"📍 currently in: {location.lower()}\n"
         f"created by ramón → ramongarciagomez.com"
     )
@@ -320,25 +322,52 @@ def post_to_mastodon(
     raise last_exc
 
 
-def update_bio_if_changed(mastodon: Mastodon, lot: sqlite3.Row) -> None:
+CURRENT_MILESTONE_PATH = ".current_milestone"
+
+
+def update_bio_if_changed(mastodon: Mastodon, lot: sqlite3.Row, posted_count: int = 0) -> None:
     # Prefer stored zip from DB row, fall back to extraction
     try:
         zipcode = lot["zip"] or extract_zip(lot["address"])
     except (IndexError, KeyError):
         zipcode = extract_zip(lot["address"])
-    if not zipcode:
-        return
+
     last_zip = None
     if os.path.exists(CURRENT_ZIP_PATH):
         with open(CURRENT_ZIP_PATH) as f:
             last_zip = f.read().strip()
-    if zipcode == last_zip:
+
+    last_milestone = None
+    if os.path.exists(CURRENT_MILESTONE_PATH):
+        with open(CURRENT_MILESTONE_PATH) as f:
+            try:
+                last_milestone = int(f.read().strip())
+            except ValueError:
+                pass
+
+    current_milestone = next((m for m in MILESTONE_INTERVALS if posted_count >= m and (last_milestone is None or m > last_milestone)), None)
+
+    zip_changed = zipcode and zipcode != last_zip
+    milestone_crossed = current_milestone is not None
+
+    if not zip_changed and not milestone_crossed:
         return
-    bio = format_bio(lot)
-    print(f"  Zip changed {last_zip} → {zipcode}, updating bio...")
+
+    bio = format_bio(lot, milestone=current_milestone)
+    reasons = []
+    if zip_changed:
+        reasons.append(f"zip {last_zip} → {zipcode}")
+    if milestone_crossed:
+        reasons.append(f"milestone {current_milestone:,}")
+    print(f"  Updating bio ({', '.join(reasons)})...")
     mastodon.account_update_credentials(note=bio)
-    with open(CURRENT_ZIP_PATH, "w") as f:
-        f.write(zipcode)
+
+    if zipcode:
+        with open(CURRENT_ZIP_PATH, "w") as f:
+            f.write(zipcode)
+    if current_milestone:
+        with open(CURRENT_MILESTONE_PATH, "w") as f:
+            f.write(str(current_milestone))
 
 
 def mark_posted(
@@ -601,7 +630,7 @@ def main():
     # Bug 2 — bio update AFTER try/except, bio failure does not crash bot
     if mastodon_client is not None and not args.dry_run:
         try:
-            update_bio_if_changed(mastodon_client, lot)
+            update_bio_if_changed(mastodon_client, lot, posted_count=posted_count + 1)
         except Exception as e:
             print(f"  WARNING: Bio update failed (post already succeeded): {e}")
 
