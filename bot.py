@@ -1,4 +1,4 @@
-"""@everylotSJ Mastodon bot — posts one San Jose address per hour.
+"""@everylotSJ Mastodon bot — posts one San Jose address every 2 minutes.
 
 Usage:
     python bot.py                  # pick the next unposted address and post it
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -34,6 +35,41 @@ PLACE_TYPES = {
     "TR": ("🚉", "Transit / Transportation"),
 }
 
+ZIP_NEIGHBORHOODS = {
+    "95002": "Alviso",
+    "95008": "Campbell",
+    "95101": "Downtown",
+    "95110": "Downtown",
+    "95111": "South San Jose",
+    "95112": "East San Jose",
+    "95113": "Downtown",
+    "95116": "Mayfair",
+    "95117": "West San Jose",
+    "95118": "Cambrian",
+    "95119": "South San Jose",
+    "95120": "Almaden Valley",
+    "95121": "East San Jose",
+    "95122": "East San Jose",
+    "95123": "Blossom Valley",
+    "95124": "Willow Glen",
+    "95125": "Willow Glen",
+    "95126": "Rose Garden",
+    "95127": "East Foothills",
+    "95128": "West San Jose",
+    "95129": "West San Jose",
+    "95130": "West San Jose",
+    "95131": "North San Jose",
+    "95132": "Berryessa",
+    "95133": "Berryessa",
+    "95134": "North San Jose",
+    "95135": "Evergreen",
+    "95136": "South San Jose",
+    "95138": "Silver Creek",
+    "95139": "South San Jose",
+    "95140": "Mount Hamilton",
+    "95148": "East San Jose",
+}
+
 
 def load_credentials() -> dict:
     load_dotenv()
@@ -52,8 +88,13 @@ def get_lot(conn: sqlite3.Connection, row_id: Optional[int] = None) -> Optional[
     if row_id is not None:
         cur.execute("SELECT * FROM lots WHERE id = ?", (row_id,))
     else:
-        cur.execute("SELECT * FROM lots WHERE posted = 0 ORDER BY RANDOM() LIMIT 1")
+        cur.execute("SELECT * FROM lots WHERE posted = 0 ORDER BY id ASC LIMIT 1")
     return cur.fetchone()
+
+
+def extract_zip(address: str) -> Optional[str]:
+    m = re.search(r"\b(9\d{4})\b", address)
+    return m.group(1) if m else None
 
 
 def format_post(lot: sqlite3.Row) -> str:
@@ -67,6 +108,17 @@ def format_post(lot: sqlite3.Row) -> str:
 
     lines.append("#SanJose #everylotSJ")
     return "\n".join(lines)
+
+
+def format_bio(address: str) -> str:
+    zipcode = extract_zip(address)
+    neighborhood = ZIP_NEIGHBORHOODS.get(zipcode, "San Jose") if zipcode else "San Jose"
+    location = f"{neighborhood} ({zipcode})" if zipcode else neighborhood
+    return (
+        f"Posting every address in San Jose one by one (all 394k) 📍\n"
+        f"Currently in: {location}\n"
+        f"Created by Ramón → ramongarciagomez.com"
+    )
 
 
 def street_view_has_image(lat: float, lon: float, api_key: str) -> bool:
@@ -105,7 +157,7 @@ def fetch_street_view(lat: float, lon: float, api_key: str) -> Optional[str]:
         return None
 
 
-def post_to_mastodon(text: str, image_path: Optional[str], address: str, creds: dict) -> Optional[str]:
+def post_to_mastodon(text: str, image_path: Optional[str], address: str, creds: dict) -> tuple[Optional[str], Mastodon]:
     mastodon = Mastodon(
         client_id=creds["MASTODON_CLIENT_KEY"],
         client_secret=creds["MASTODON_CLIENT_SECRET"],
@@ -122,7 +174,13 @@ def post_to_mastodon(text: str, image_path: Optional[str], address: str, creds: 
 
     print("  Posting to Mastodon...")
     status = mastodon.status_post(text, media_ids=media_ids, visibility="public")
-    return str(status["id"]) if status else None
+    return str(status["id"]) if status else None, mastodon
+
+
+def update_bio(mastodon: Mastodon, address: str) -> None:
+    bio = format_bio(address)
+    print(f"  Updating bio: {repr(bio)}")
+    mastodon.account_update_credentials(note=bio)
 
 
 def mark_posted(conn: sqlite3.Connection, lot_id: int, post_id: Optional[str]) -> None:
@@ -158,8 +216,11 @@ def main():
         print(f"Selected ID {lot['id']} — {lot['address']}")
 
         post_text = format_post(lot)
+        bio_text = format_bio(lot["address"])
         print("---- post preview ----")
         print(post_text)
+        print("---- bio preview ----")
+        print(bio_text)
         print("----------------------")
 
         image_path = None
@@ -184,9 +245,10 @@ def main():
                     print(f"ERROR: Missing Mastodon credentials: {missing}")
                     sys.exit(1)
                 try:
-                    post_id = post_to_mastodon(post_text, image_path, lot["address"], creds)
+                    post_id, mastodon = post_to_mastodon(post_text, image_path, lot["address"], creds)
                     mark_posted(conn, lot["id"], post_id)
                     print(f"Posted! Status ID: {post_id}")
+                    update_bio(mastodon, lot["address"])
                 except Exception as e:
                     conn.rollback()
                     print(f"Posting failed: {e}")
