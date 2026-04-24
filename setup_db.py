@@ -85,6 +85,7 @@ def create_db(reset: bool = False) -> sqlite3.Connection:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_posted_id ON lots(posted, id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_posted_zip_id ON lots(posted, zip, id)")
     conn.commit()
 
     # Migration for existing DBs

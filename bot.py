@@ -102,7 +102,7 @@ def get_lot(conn: sqlite3.Connection, row_id: Optional[int] = None) -> Optional[
     if row_id is not None:
         cur.execute("SELECT * FROM lots WHERE id = ?", (row_id,))
     else:
-        cur.execute("SELECT * FROM lots WHERE posted = 0 ORDER BY id ASC LIMIT 1")
+        cur.execute("SELECT * FROM lots WHERE posted = 0 ORDER BY COALESCE(zip, SUBSTR(address, -5)) ASC, id ASC LIMIT 1")
     return cur.fetchone()
 
 
