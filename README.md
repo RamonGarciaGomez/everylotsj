@@ -38,7 +38,24 @@ Property type codes:
 | CO | 🏢 | Condo |
 | TR | 🚉 | Transit / Transportation |
 
-The bot's Mastodon bio updates automatically as it moves through zip codes and neighborhoods. It also marks milestones (1k, 5k, 10k, 50k, 100k posts) in the bio temporarily.
+The bot's Mastodon bio updates automatically as it moves through zip codes and neighborhoods:
+
+```
+posting every address in san josé one by one (all 394k)
+📍 currently in: willow glen (95124)
+created by ramón → ramongarciagomez.com
+```
+
+At milestone post counts (1k, 5k, 10k, 50k, 100k) a celebration line is added:
+
+```
+posting every address in san josé one by one (all 394k)
+🎉 1,000 addresses posted!
+📍 currently in: willow glen (95124)
+created by ramón → ramongarciagomez.com
+```
+
+The bio only calls the Mastodon API when the zip code or milestone actually changes, not on every post.
 
 ---
 
