@@ -169,9 +169,9 @@ def format_bio(lot: sqlite3.Row) -> str:
         neighborhood = ZIP_NEIGHBORHOODS.get(zipcode, "San Jose") if zipcode else "San Jose"
     location = f"{neighborhood} ({zipcode})" if zipcode else neighborhood
     return (
-        f"Posting every address in San Jose one by one (all 394k) 📍\n"
-        f"Currently in: {location}\n"
-        f"Created by Ramón → ramongarciagomez.com"
+        f"posting every address in san josé one by one (all 394k)\n"
+        f"📍 currently in: {location.lower()}\n"
+        f"created by ramón → ramongarciagomez.com"
     )
 
 
