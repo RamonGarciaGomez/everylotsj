@@ -1,4 +1,5 @@
 .env
+.current_zip
 lots.db
 logs/
 __pycache__/

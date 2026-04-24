@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from mastodon import Mastodon
 
 DB_PATH = "lots.db"
+CURRENT_ZIP_PATH = ".current_zip"
 STREET_VIEW_URL = "https://maps.googleapis.com/maps/api/streetview"
 STREET_VIEW_METADATA_URL = "https://maps.googleapis.com/maps/api/streetview/metadata"
 USER_AGENT = "everylotSJ-bot/1.0 (https://github.com/RamonGarciaGomez/everylotsj)"
@@ -177,10 +178,17 @@ def post_to_mastodon(text: str, image_path: Optional[str], address: str, creds: 
     return str(status["id"]) if status else None, mastodon
 
 
-def update_bio(mastodon: Mastodon, address: str) -> None:
+def update_bio_if_changed(mastodon: Mastodon, address: str) -> None:
+    zipcode = extract_zip(address)
+    if not zipcode:
+        return
+    last_zip = open(CURRENT_ZIP_PATH).read().strip() if os.path.exists(CURRENT_ZIP_PATH) else None
+    if zipcode == last_zip:
+        return
     bio = format_bio(address)
-    print(f"  Updating bio: {repr(bio)}")
+    print(f"  Zip changed {last_zip} → {zipcode}, updating bio...")
     mastodon.account_update_credentials(note=bio)
+    open(CURRENT_ZIP_PATH, "w").write(zipcode)
 
 
 def mark_posted(conn: sqlite3.Connection, lot_id: int, post_id: Optional[str]) -> None:
@@ -248,7 +256,7 @@ def main():
                     post_id, mastodon = post_to_mastodon(post_text, image_path, lot["address"], creds)
                     mark_posted(conn, lot["id"], post_id)
                     print(f"Posted! Status ID: {post_id}")
-                    update_bio(mastodon, lot["address"])
+                    update_bio_if_changed(mastodon, lot["address"])
                 except Exception as e:
                     conn.rollback()
                     print(f"Posting failed: {e}")
