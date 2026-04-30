@@ -360,7 +360,6 @@ def update_bio_if_changed(mastodon: Mastodon, lot: sqlite3.Row, posted_count: in
     if milestone_crossed:
         reasons.append(f"milestone {current_milestone:,}")
     print(f"  Updating bio ({', '.join(reasons)})...")
-    mastodon.account_update_credentials(note=bio)
 
     if zipcode:
         with open(CURRENT_ZIP_PATH, "w") as f:
@@ -368,6 +367,8 @@ def update_bio_if_changed(mastodon: Mastodon, lot: sqlite3.Row, posted_count: in
     if current_milestone:
         with open(CURRENT_MILESTONE_PATH, "w") as f:
             f.write(str(current_milestone))
+
+    mastodon.account_update_credentials(note=bio)
 
 
 def mark_posted(
@@ -538,7 +539,7 @@ def main():
         if lot["place_type"] == "BU" and lot["lat"] is not None and lot["lon"] is not None and creds.get("GOOGLE_API_KEY"):
             place_name = get_place_name(lot["lat"], lot["lon"], creds["GOOGLE_API_KEY"])
 
-        post_text = format_post(lot, posted_count=posted_count, place_name=place_name)
+        post_text = format_post(lot, posted_count=posted_count + 1, place_name=place_name)
         bio_text = format_bio(lot)
         print("---- post preview ----")
         print(post_text)
